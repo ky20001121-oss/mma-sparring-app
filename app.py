@@ -4,158 +4,189 @@ import os
 from collections import Counter
 import sqlite3
 import pandas as pd
+import plotly.express as px
 
-# タイトル
+st.set_page_config(page_title="格闘技スパーリング記録アプリ", layout="wide")
+
+# Page configuration
 st.title("格闘技スパーリング記録アプリ")
 
 # データベース接続とテーブル作成
-conn = sqlite3.connect('mma_records.db')  # データベースファイルに接続
-conn.execute('''CREATE TABLE IF NOT EXISTS records (
-    id INTEGER PRIMARY KEY,
-    practice_date TEXT,
-    opponent_name TEXT,
-    result TEXT,
-    concentration INTEGER,
-    meal TEXT,
-    opponent_style TEXT,
-    opponent_build TEXT,
-    previous_day TEXT,
-    memo TEXT
-)''')  # テーブルが存在しなければ作成
-conn.commit()  # 変更を保存
+def init_db():
+    conn = sqlite3.connect('mma_records.db')
+    conn.execute('''CREATE TABLE IF NOT EXISTS records (
+        id INTEGER PRIMARY KEY,
+        practice_date TEXT,
+        opponent_name TEXT,
+        result TEXT,
+        concentration INTEGER,
+        meal TEXT,
+        opponent_style TEXT,
+        opponent_build TEXT,
+        previous_day TEXT,
+        memo TEXT,
+        fatigue TEXT,
+        opponent_weight TEXT,
+        own_weight TEXT
+    )''')
+    
+    # 既存のテーブルに新しいカラムがなければ追加
+    cursor = conn.execute("PRAGMA table_info(records)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'fatigue' not in columns:
+        conn.execute('ALTER TABLE records ADD COLUMN fatigue TEXT')
+    if 'opponent_weight' not in columns:
+        conn.execute('ALTER TABLE records ADD COLUMN opponent_weight TEXT')
+    if 'own_weight' not in columns:
+        conn.execute('ALTER TABLE records ADD COLUMN own_weight TEXT')
+    
+    conn.commit()
+    conn.close()
 
 # データの読み込み
-cursor = conn.execute('SELECT * FROM records')
-rows = cursor.fetchall()
-st.session_state.records = []
-for row in rows:
-    record = {
-        "練習日": date.fromisoformat(row[1]),  # TEXTからdate型に変換
-        "対戦相手": row[2],
-        "結果": row[3],
-        "集中度": row[4],
-        "食事": row[5],
-        "相手のスタイル": row[6],
-        "相手の体格": row[7],
-        "前日の過ごし方": row[8],
-        "メモ": row[9]
-    }
-    st.session_state.records.append(record)
-conn.close()  # 接続を閉じる
+def load_records():
+    conn = sqlite3.connect('mma_records.db')
+    cursor = conn.execute('SELECT * FROM records')
+    rows = cursor.fetchall()
+    records = []
+    for row in rows:
+        record = {
+            "id": row[0],
+            "練習日": date.fromisoformat(row[1]),
+            "対戦相手": row[2],
+            "結果": row[3],
+            "集中度": row[4],
+            "食事": row[5],
+            "相手のスタイル": row[6],
+            "相手の体格": row[7],
+            "前日の過ごし方": row[8],
+            "メモ": row[9],
+            "当日の疲労度": row[10] if len(row) > 10 else "",
+            "相手の体重": row[11] if len(row) > 11 else "",
+            "自分の体重": row[12] if len(row) > 12 else ""
+        }
+        records.append(record)
+    conn.close()
+    return records
 
-# 入力フォーム
-st.header("新しい記録を入力")
+# 初期化
+init_db()
 
-practice_date = st.date_input("練習日", value=date.today())
-opponent_name = st.text_input("対戦相手の名前")
-result = st.selectbox("スパーリングの結果", ["一本勝ち", "一本負け", "判定勝ち", "判定負け", "引き分け"])
-concentration = st.slider("集中度", min_value=1, max_value=5, value=3)
-meal = st.selectbox("直前の食事", ["食べた", "食べてない", "軽く食べた"])
-opponent_style = st.selectbox("相手のスタイル", ["ストライカー", "グラップラー", "レスラー"])
-opponent_build = st.selectbox("相手の体格", ["大きい", "同じくらい", "小さい"])
-previous_day = st.selectbox("前日の過ごし方", ["しっかり休憩", "筋トレした", "夜更かしした"])
-memo = st.text_area("メモ")
+# ページ選択
+page = st.sidebar.radio("ナビゲーション", ["📝 記録する", "📋 記録一覧", "📊 グラフ"])
 
-# 保存ボタン
-if st.button("保存"):
-    new_record = {
-        "練習日": practice_date,
-        "対戦相手": opponent_name,
-        "結果": result,
-        "集中度": concentration,
-        "食事": meal,
-        "相手のスタイル": opponent_style,
-        "相手の体格": opponent_build,
-        "前日の過ごし方": previous_day,
-        "メモ": memo
-    }
-    st.session_state.records.append(new_record)
+if page == "📝 記録する":
+    st.header("新しい記録を入力")
     
-    # データベースに保存
-    conn = sqlite3.connect('mma_records.db')  # データベースに接続
-    conn.execute('INSERT INTO records VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (
-        practice_date.isoformat(),  # dateをTEXTに変換
-        opponent_name,
-        result,
-        concentration,
-        meal,
-        opponent_style,
-        opponent_build,
-        previous_day,
-        memo
-    ))
-    conn.commit()  # 変更を保存
-    conn.close()  # 接続を閉じる
-    
-    st.success("記録が保存されました！")
+    with st.form("record_form"):
+        practice_date = st.date_input("練習日", value=date.today())
+        opponent_name = st.text_input("対戦相手の名前")
+        result = st.text_input("スパーリングの結果")
+        concentration = st.slider("集中度", min_value=1, max_value=5, value=3)
+        meal = st.text_input("直前の食事")
+        opponent_style = st.text_input("相手のスタイル")
+        opponent_build = st.text_input("相手の体格")
+        opponent_weight = st.text_input("相手の体重")
+        own_weight = st.text_input("当日の自分の体重")
+        previous_day = st.text_input("前日の過ごし方")
+        fatigue = st.text_input("当日の疲労度")
+        memo = st.text_area("メモ")
+        
+        submitted = st.form_submit_button("保存")
+        
+        if submitted:
+            if opponent_name:
+                conn = sqlite3.connect('mma_records.db')
+                conn.execute('INSERT INTO records VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                    practice_date.isoformat(),
+                    opponent_name,
+                    result,
+                    concentration,
+                    meal,
+                    opponent_style,
+                    opponent_build,
+                    previous_day,
+                    memo,
+                    fatigue,
+                    opponent_weight,
+                    own_weight
+                ))
+                conn.commit()
+                conn.close()
+                st.success("記録が保存されました！")
+            else:
+                st.error("対戦相手の名前を入力してください")
 
-# 記録リストの表示
-st.header("記録リスト")
-if st.session_state.records:
-    for i, record in enumerate(st.session_state.records):
-        st.subheader(f"記録 {i+1}")
-        st.write(f"練習日: {record['練習日']}")
-        st.write(f"対戦相手: {record['対戦相手']}")
-        st.write(f"結果: {record['結果']}")
-        st.write(f"集中度: {record['集中度']}")
-        st.write(f"食事: {record['食事']}")
-        st.write(f"相手のスタイル: {record['相手のスタイル']}")
-        st.write(f"相手の体格: {record['相手の体格']}")
-        st.write(f"前日の過ごし方: {record['前日の過ごし方']}")
-        st.write(f"メモ: {record['メモ']}")
-        st.divider()
-else:
-    st.write("まだ記録がありません。")
-
-# データ分析
-st.header("データ分析")
-if st.session_state.records:
-    records = st.session_state.records
+elif page == "📋 記録一覧":
+    st.header("これまでの記録")
     
-    # 勝敗カウント
-    wins = sum(1 for r in records if '勝ち' in r['結果'])
-    losses = sum(1 for r in records if '負け' in r['結果'])
-    draws = sum(1 for r in records if '引き分け' in r['結果'])
+    records = load_records()
     
-    st.subheader("勝敗統計")
-    st.write(f"総試合数: {len(records)}")
-    st.write(f"勝ち: {wins}, 負け: {losses}, 引き分け: {draws}")
-    
-    # 集中度の平均
-    avg_concentration = sum(r['集中度'] for r in records) / len(records)
-    st.subheader("集中度")
-    st.write(f"平均集中度: {avg_concentration:.2f}")
-    
-    # 食事ごとの勝率
-    st.subheader("食事ごとの勝率")
-    meal_stats = {}
-    for r in records:
-        meal = r['食事']
-        if meal not in meal_stats:
-            meal_stats[meal] = {'total': 0, 'wins': 0}
-        meal_stats[meal]['total'] += 1
-        if '勝ち' in r['結果']:
-            meal_stats[meal]['wins'] += 1
-    
-    for meal, stats in meal_stats.items():
-        win_rate = stats['wins'] / stats['total'] * 100 if stats['total'] > 0 else 0
-        st.write(f"{meal}: 試合数 {stats['total']}, 勝率 {win_rate:.1f}%")
-    
-    # 苦手分析
-    st.header("苦手分析")
-    
-    # 天敵スタイル
-    st.subheader("天敵スタイル")
-    lost_matches = [r for r in records if '負け' in r['結果']]
-    if lost_matches:
-        enemy_combinations = [(r['相手のスタイル'], r['相手の体格']) for r in lost_matches]
-        most_common = Counter(enemy_combinations).most_common(1)
-        if most_common:
-            style, build = most_common[0][0]
-            count = most_common[0][1]
-            st.write(f"最も負けた組み合わせ: {style} × {build} (負け数: {count})")
+    if records:
+        for i, record in enumerate(records):
+            with st.container(border=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**練習日**: {record['練習日']}")
+                    st.write(f"**対戦相手**: {record['対戦相手']}")
+                    st.write(f"**相手の体重**: {record['相手の体重']}")
+                    st.write(f"**自分の体重**: {record['自分の体重']}")
+                    st.write(f"**結果**: {record['結果']}")
+                with col2:
+                    st.write(f"**集中度**: {record['集中度']}")
+                    st.write(f"**食事**: {record['食事']}")
+                    st.write(f"**相手のスタイル**: {record['相手のスタイル']}")
+                    st.write(f"**相手の体格**: {record['相手の体格']}")
+                    st.write(f"**前日の過ごし方**: {record['前日の過ごし方']}")
+                    st.write(f"**当日の疲労度**: {record['当日の疲労度']}")
+                st.write(f"**メモ**: {record['メモ']}")
     else:
-        st.write("負けた試合がありません。")
+        st.write("まだ記録がありません.")
+
+elif page == "📊 グラフ":
+    st.header("データ分析")
+    
+    records = load_records()
+    
+    if records:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            wins = sum(1 for r in records if '勝ち' in r['結果'])
+            st.metric("総勝ち数", wins)
+        
+        with col2:
+            losses = sum(1 for r in records if '負け' in r['結果'])
+            st.metric("総負け数", losses)
+        
+        with col3:
+            draws = sum(1 for r in records if '引き分け' in r['結果'])
+            st.metric("総引き分け数", draws)
+        
+        st.divider()
+        
+        # 集中度の平均
+        avg_concentration = sum(r['集中度'] for r in records) / len(records)
+        st.metric("集中度の平均", f"{avg_concentration:.1f}")
+        
+        # 対戦相手の統計
+        st.subheader("対戦相手別の記録")
+        opponent_counts = Counter(r['対戦相手'] for r in records)
+        df_opponents = pd.DataFrame(opponent_counts.items(), columns=['対戦相手', '回数'])
+        fig_opponents = px.bar(df_opponents, x='回数', y='対戦相手', orientation='h', labels={'回数': '試合数', '対戦相手': '対戦相手'})
+        fig_opponents.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig_opponents, use_container_width=True)
+        
+        # 集中度の分布
+        st.subheader("集中度の分布")
+        concentration_counts = Counter(r['集中度'] for r in records)
+        df_concentration = pd.DataFrame(concentration_counts.items(), columns=['集中度', '回数']).sort_values('集中度')
+        df_concentration['集中度'] = df_concentration['集中度'].astype(str)
+        fig_concentration = px.bar(df_concentration, x='集中度', y='回数', labels={'回数': '試合数', '集中度': '集中度'})
+        fig_concentration.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig_concentration, use_container_width=True)
+    else:
+        st.write("表示するデータがありません。")
     
     # コンディション分析
     st.subheader("コンディション分析")

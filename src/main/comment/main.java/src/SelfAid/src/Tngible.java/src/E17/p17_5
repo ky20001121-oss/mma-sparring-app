@@ -1,9 +1,0 @@
-// ①「お手上げ宣言」：このメソッドはエラーを外に投げる可能性があるよ！という予告
-public static void main(String[] args) throws IOException { 
-
-    // ② 普通の命令：画面に文字を出す
-    System.out.println("プログラムを起動します");
-
-    // ③「爆弾を投げる」：わざと IOException というエラー事件を発生させる
-    throw new IOException("プログラムを異常終了させます");
-}
