@@ -19,11 +19,27 @@ def create_supabase_client():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     if not url or not key:
+        st.warning("Supabaseの環境変数が設定されていません。SUPABASE_URL と SUPABASE_KEY または SUPABASE_SERVICE_ROLE_KEY を設定してください。")
         return None
+
     # 改行コードを除去してクリーンなAPIキーにする
     url = url.strip()
     key = key.strip()
-    return create_client(url, key)
+
+    # APIキーの基本的な検証
+    if len(key) < 100:  # SupabaseのAPIキーは通常100文字以上
+        st.warning("Supabase APIキーが短すぎます。正しいAPIキーを設定してください。")
+        return None
+
+    try:
+        client = create_client(url, key)
+        # 接続テスト
+        test_response = client.table(SUPABASE_TABLE).select('id').limit(1).execute()
+        return client
+    except Exception as e:
+        st.warning(f"Supabase接続エラー: {e}")
+        st.info("APIキーが正しいか確認してください。Streamlit Secretsで設定されている場合は、改行コードが含まれていないか確認してください。")
+        return None
 
 
 supabase_client = create_supabase_client()
@@ -245,35 +261,49 @@ def delete_record(record_id):
 # Supabase への移行
 def migrate_sqlite_to_supabase():
     if not supabase_client:
+        st.info("Supabaseクライアントが利用できないため、SQLiteを使用します。")
         return
     try:
         # 既存データをチェック
         response = supabase_client.table(SUPABASE_TABLE).select('id').limit(1).execute()
         if response.data:
+            st.info("Supabaseに既にデータが存在するため、移行をスキップします。")
             return
         sqlite_records = load_records_sqlite()
         if not sqlite_records:
+            st.info("SQLiteにデータがないため、移行をスキップします。")
             return
-        payload = []
-        for record in sqlite_records:
-            payload.append({
-                'practice_date': record['練習日'].isoformat(),
-                'opponent_name': record['対戦相手'],
-                'result': record['結果'],
-                'concentration': record['集中度'],
-                'meal': record['食事'],
-                'opponent_style': record['相手のスタイル'],
-                'opponent_build': record['相手の体格'],
-                'previous_day': record['前日の過ごし方'],
-                'memo': record['メモ'],
-                'fatigue': record['当日の疲労度'],
-                'opponent_weight': record['相手の体重'],
-                'own_weight': record['自分の体重']
-            })
-        supabase_client.table(SUPABASE_TABLE).insert(payload).execute()
-        st.success('SQLiteの記録をSupabaseに移行しました。')
+
+        # 少量ずつ移行してエラーを防ぐ
+        batch_size = 10
+        for i in range(0, len(sqlite_records), batch_size):
+            batch = sqlite_records[i:i + batch_size]
+            payload = []
+            for record in batch:
+                payload.append({
+                    'practice_date': record['練習日'].isoformat(),
+                    'opponent_name': record['対戦相手'],
+                    'result': record['結果'],
+                    'concentration': record['集中度'],
+                    'meal': record['食事'],
+                    'opponent_style': record['相手のスタイル'],
+                    'opponent_build': record['相手の体格'],
+                    'previous_day': record['前日の過ごし方'],
+                    'memo': record['メモ'],
+                    'fatigue': record['当日の疲労度'],
+                    'opponent_weight': record['相手の体重'],
+                    'own_weight': record['自分の体重']
+                })
+            try:
+                supabase_client.table(SUPABASE_TABLE).insert(payload).execute()
+            except Exception as batch_error:
+                st.warning(f"バッチ {i//batch_size + 1} の移行中にエラーが発生しました: {batch_error}")
+                continue
+
+        st.success(f'SQLiteの記録 {len(sqlite_records)} 件をSupabaseに移行しました。')
     except Exception as e:
         st.warning(f"Supabase移行中にエラーが発生しました: {e}")
+        st.info("Supabaseの設定を確認してください。テーブル 'records' が存在するか、APIキーが正しいか確認してください。")
 
 
 # 初期化
