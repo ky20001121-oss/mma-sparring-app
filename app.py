@@ -17,7 +17,11 @@ SUPABASE_TABLE = "records"
 
 def create_supabase_client():
     url = st.secrets.get("SUPABASE_URL")
-    key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY") or st.secrets.get("SUPABASE_KEY")
+    service_role_key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY")
+    if service_role_key:
+        key = service_role_key
+    else:
+        key = st.secrets.get("SUPABASE_KEY")
     if not url or not key:
         st.warning("Supabaseの環境変数が設定されていません。SUPABASE_URL と SUPABASE_KEY または SUPABASE_SERVICE_ROLE_KEY を設定してください。")
         return None
