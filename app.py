@@ -20,6 +20,9 @@ def create_supabase_client():
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     if not url or not key:
         return None
+    # 改行コードを除去してクリーンなAPIキーにする
+    url = url.strip()
+    key = key.strip()
     return create_client(url, key)
 
 
@@ -89,28 +92,29 @@ def load_records_sqlite():
 def load_records_supabase():
     if not supabase_client:
         return []
-    response = supabase_client.table(SUPABASE_TABLE).select('*').order('practice_date', ascending=True).execute()
-    if response.error:
-        raise RuntimeError(response.error.message)
-    records = []
-    for row in response.data:
-        record = {
-            "id": row.get('id'),
-            "練習日": date.fromisoformat(row.get('practice_date')) if row.get('practice_date') else date.today(),
-            "対戦相手": row.get('opponent_name', ''),
-            "結果": row.get('result', ''),
-            "集中度": row.get('concentration', 3),
-            "食事": row.get('meal', ''),
-            "相手のスタイル": row.get('opponent_style', ''),
-            "相手の体格": row.get('opponent_build', ''),
-            "前日の過ごし方": row.get('previous_day', ''),
-            "メモ": row.get('memo', ''),
-            "当日の疲労度": row.get('fatigue', ''),
-            "相手の体重": row.get('opponent_weight', ''),
-            "自分の体重": row.get('own_weight', '')
-        }
-        records.append(record)
-    return records
+    try:
+        response = supabase_client.table(SUPABASE_TABLE).select('*').order('practice_date').execute()
+        records = []
+        for row in response.data:
+            record = {
+                "id": row.get('id'),
+                "練習日": date.fromisoformat(row.get('practice_date')) if row.get('practice_date') else date.today(),
+                "対戦相手": row.get('opponent_name', ''),
+                "結果": row.get('result', ''),
+                "集中度": row.get('concentration', 3),
+                "食事": row.get('meal', ''),
+                "相手のスタイル": row.get('opponent_style', ''),
+                "相手の体格": row.get('opponent_build', ''),
+                "前日の過ごし方": row.get('previous_day', ''),
+                "メモ": row.get('memo', ''),
+                "当日の疲労度": row.get('fatigue', ''),
+                "相手の体重": row.get('opponent_weight', ''),
+                "自分の体重": row.get('own_weight', '')
+            }
+            records.append(record)
+        return records
+    except Exception as e:
+        raise RuntimeError(f"Supabase読み込みエラー: {e}")
 
 
 # データベース読み込み
@@ -125,9 +129,11 @@ def load_records():
 
 # Supabase にデータを保存
 def insert_record_supabase(record):
-    response = supabase_client.table(SUPABASE_TABLE).insert(record).execute()
-    if response.error:
-        raise RuntimeError(response.error.message)
+    try:
+        response = supabase_client.table(SUPABASE_TABLE).insert(record).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase保存エラー: {e}")
 
 
 # SQLite にデータを保存
@@ -167,9 +173,11 @@ def save_record(record):
 
 # Supabase で更新
 def update_record_supabase(record_id, record):
-    response = supabase_client.table(SUPABASE_TABLE).update(record).eq('id', record_id).execute()
-    if response.error:
-        raise RuntimeError(response.error.message)
+    try:
+        response = supabase_client.table(SUPABASE_TABLE).update(record).eq('id', record_id).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase更新エラー: {e}")
 
 
 # SQLite で更新
@@ -209,9 +217,11 @@ def update_record(record_id, record):
 
 # Supabase で削除
 def delete_record_supabase(record_id):
-    response = supabase_client.table(SUPABASE_TABLE).delete().eq('id', record_id).execute()
-    if response.error:
-        raise RuntimeError(response.error.message)
+    try:
+        response = supabase_client.table(SUPABASE_TABLE).delete().eq('id', record_id).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase削除エラー: {e}")
 
 
 # SQLite で削除
@@ -237,9 +247,8 @@ def migrate_sqlite_to_supabase():
     if not supabase_client:
         return
     try:
+        # 既存データをチェック
         response = supabase_client.table(SUPABASE_TABLE).select('id').limit(1).execute()
-        if response.error:
-            raise RuntimeError(response.error.message)
         if response.data:
             return
         sqlite_records = load_records_sqlite()
