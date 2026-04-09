@@ -23,8 +23,8 @@ def create_supabase_client():
         return None
 
     # 改行コードを除去してクリーンなAPIキーにする
-    url = url.strip()
-    key = key.strip()
+    url = url.replace('\n', '').replace('\r', '').strip()
+    key = key.replace('\n', '').replace('\r', '').strip()
 
     try:
         client = create_client(url, key)
