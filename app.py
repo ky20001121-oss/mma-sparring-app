@@ -16,8 +16,8 @@ SUPABASE_TABLE = "records"
 
 
 def create_supabase_client():
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    url = st.secrets.get("SUPABASE_URL")
+    key = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY") or st.secrets.get("SUPABASE_KEY")
     if not url or not key:
         st.warning("Supabaseの環境変数が設定されていません。SUPABASE_URL と SUPABASE_KEY または SUPABASE_SERVICE_ROLE_KEY を設定してください。")
         return None
@@ -25,11 +25,6 @@ def create_supabase_client():
     # 改行コードを除去してクリーンなAPIキーにする
     url = url.strip()
     key = key.strip()
-
-    # APIキーの基本的な検証
-    if len(key) < 100:  # SupabaseのAPIキーは通常100文字以上
-        st.warning("Supabase APIキーが短すぎます。正しいAPIキーを設定してください。")
-        return None
 
     try:
         client = create_client(url, key)
