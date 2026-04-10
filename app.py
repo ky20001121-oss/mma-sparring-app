@@ -129,14 +129,8 @@ def load_tech_notes_supabase():
         raise RuntimeError(f"Supabase技術練習読み込みエラー: {e}")
 
 
-# 技術練習データ読み込み
-def load_tech_notes():
-    if supabase_client:
-        try:
-            return load_tech_notes_supabase()
-        except Exception as e:
-            st.warning(f"Supabase技術練習読み込みエラーのためSQLiteを使用します: {e}")
-    return load_tech_notes_sqlite()
+# SQLite からデータ読み込み
+def load_records_sqlite(opponent_filter=None, start_date=None, end_date=None):
     conn = sqlite3.connect('mma_records.db')
     query = 'SELECT * FROM records WHERE 1=1'
     params = []
@@ -171,6 +165,16 @@ def load_tech_notes():
         records.append(record)
     conn.close()
     return records
+
+
+# 技術練習データ読み込み
+def load_tech_notes():
+    if supabase_client:
+        try:
+            return load_tech_notes_supabase()
+        except Exception as e:
+            st.warning(f"Supabase技術練習読み込みエラーのためSQLiteを使用します: {e}")
+    return load_tech_notes_sqlite()
 
 
 # Supabase への移行
@@ -507,7 +511,7 @@ if page == "📝 記録する":
         col3, col4 = st.columns(2)
         with col3:
             st.markdown("**🏆 スパーリングの結果**")
-            result = st.selectbox("", options=["勝ち", "負け", "引き分け"], index=None, placeholder="結果を選択", label_visibility="collapsed")
+            result = st.radio("", options=["勝ち🔥", "負け💀", "引き分け👊"], horizontal=True, label_visibility="collapsed")
         with col4:
             st.markdown("**🎯 集中度**")
             concentration = st.slider("", min_value=1, max_value=5, value=3, label_visibility="collapsed")
@@ -549,10 +553,12 @@ if page == "📝 記録する":
         
         if submitted:
             if opponent_name:
+                # 結果から絵文字を除去
+                result_clean = result.split('🔥')[0].split('💀')[0].split('👊')[0] if result else ""
                 record = {
                     'practice_date': practice_date.isoformat(),
                     'opponent_name': opponent_name,
-                    'result': result,
+                    'result': result_clean,
                     'concentration': concentration,
                     'meal': meal,
                     'opponent_style': opponent_style,
@@ -615,7 +621,15 @@ elif page == "📋 記録一覧":
                     with st.form(f"edit_form_{record['id']}"):
                         edit_date = st.date_input("練習日", value=record['練習日'], key=f"edit_date_{record['id']}")
                         edit_opponent_name = st.text_input("対戦相手の名前", value=record['対戦相手'], key=f"edit_opponent_name_{record['id']}")
-                        edit_result = st.selectbox("スパーリングの結果", options=["勝ち", "負け", "引き分け"], index=["勝ち", "負け", "引き分け"].index(record['結果']) if record['結果'] in ["勝ち", "負け", "引き分け"] else None, key=f"edit_result_{record['id']}")
+                        # 結果から絵文字を除去して比較
+                        result_clean = record['結果'].split('🔥')[0].split('💀')[0].split('👊')[0] if '🔥' in record['結果'] or '💀' in record['結果'] or '👊' in record['結果'] else record['結果']
+                        result_options = ["勝ち🔥", "負け💀", "引き分け👊"]
+                        default_index = 0
+                        for i, opt in enumerate(result_options):
+                            if result_clean in opt:
+                                default_index = i
+                                break
+                        edit_result = st.radio("スパーリングの結果", options=result_options, index=default_index, horizontal=True, key=f"edit_result_{record['id']}")
                         edit_concentration = st.slider("集中度", min_value=1, max_value=5, value=record['集中度'], key=f"edit_concentration_{record['id']}")
                         edit_meal = st.text_input("直前の食事", value=record['食事'], key=f"edit_meal_{record['id']}")
                         edit_opponent_style = st.text_input("相手のスタイル", value=record['相手のスタイル'], key=f"edit_opponent_style_{record['id']}")
@@ -628,10 +642,12 @@ elif page == "📋 記録一覧":
                         updated = st.form_submit_button("更新", use_container_width=True, key=f"update_{record['id']}")
                         if updated:
                             if edit_opponent_name:
+                                # 結果から絵文字を除去
+                                edit_result_clean = edit_result.split('🔥')[0].split('💀')[0].split('👊')[0] if edit_result else ""
                                 updated_record = {
                                     'practice_date': edit_date.isoformat(),
                                     'opponent_name': edit_opponent_name,
-                                    'result': edit_result,
+                                    'result': edit_result_clean,
                                     'concentration': edit_concentration,
                                     'meal': edit_meal,
                                     'opponent_style': edit_opponent_style,
