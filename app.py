@@ -329,7 +329,18 @@ if supabase_client:
     migrate_sqlite_to_supabase()
 
 # ページ選択
-page = st.sidebar.radio("ナビゲーション", ["📝 記録する", "📋 記録一覧", "📊 グラフ"])
+if 'page' not in st.session_state:
+    st.session_state['page'] = "📝 記録する"
+
+# サイドバーメニュー
+st.sidebar.markdown("### 🥊 ナビゲーション")
+menu_items = ["📝 記録する", "📋 記録一覧", "📊 グラフ"]
+for item in menu_items:
+    button_text = f"▶ {item}" if st.session_state['page'] == item else item
+    if st.sidebar.button(button_text, key=item, use_container_width=True):
+        st.session_state['page'] = item
+
+page = st.session_state['page']
 
 if page == "📝 記録する":
     st.markdown("<h1 style='text-align: center; color: #FF6B35; font-weight: bold;'>⚡ 新しい記録を入力 ⚡</h1>", unsafe_allow_html=True)
