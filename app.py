@@ -173,6 +173,54 @@ def load_tech_notes():
     return records
 
 
+# Supabase への移行
+def migrate_sqlite_to_supabase():
+    if not supabase_client:
+        st.info("Supabaseクライアントが利用できないため、SQLiteを使用します。")
+        return
+    try:
+        # 既存データをチェック
+        response = supabase_client.table(SUPABASE_TABLE).select('id').limit(1).execute()
+        if response.data:
+            st.info("Supabaseに既にデータが存在するため、移行をスキップします。")
+            return
+        sqlite_records = load_records_sqlite()
+        if not sqlite_records:
+            st.info("SQLiteにデータがないため、移行をスキップします。")
+            return
+
+        # 少量ずつ移行してエラーを防ぐ
+        batch_size = 10
+        for i in range(0, len(sqlite_records), batch_size):
+            batch = sqlite_records[i:i + batch_size]
+            payload = []
+            for record in batch:
+                payload.append({
+                    'practice_date': record['練習日'].isoformat(),
+                    'opponent_name': record['対戦相手'],
+                    'result': record['結果'],
+                    'concentration': record['集中度'],
+                    'meal': record['食事'],
+                    'opponent_style': record['相手のスタイル'],
+                    'opponent_build': record['相手の体格'],
+                    'previous_day': record['前日の過ごし方'],
+                    'memo': record['メモ'],
+                    'fatigue': record['当日の疲労度'],
+                    'opponent_weight': record['相手の体重'],
+                    'own_weight': record['自分の体重']
+                })
+            try:
+                supabase_client.table(SUPABASE_TABLE).insert(payload).execute()
+            except Exception as batch_error:
+                st.warning(f"バッチ {i//batch_size + 1} の移行中にエラーが発生しました: {batch_error}")
+                continue
+
+        st.success(f'SQLiteの記録 {len(sqlite_records)} 件をSupabaseに移行しました。')
+    except Exception as e:
+        st.warning(f"Supabase移行中にエラーが発生しました: {e}")
+        st.info("Supabaseの設定を確認してください。テーブル 'records' が存在するか、APIキーが正しいか確認してください。")
+
+
 # Supabase からデータ読み込み
 def load_records_supabase(opponent_filter=None, start_date=None, end_date=None):
     if not supabase_client:
@@ -421,54 +469,6 @@ def delete_record(record_id):
         except Exception as e:
             st.warning(f"Supabase削除エラーのためSQLiteを削除します: {e}")
     delete_record_sqlite(record_id)
-
-
-# Supabase への移行
-def migrate_sqlite_to_supabase():
-    if not supabase_client:
-        st.info("Supabaseクライアントが利用できないため、SQLiteを使用します。")
-        return
-    try:
-        # 既存データをチェック
-        response = supabase_client.table(SUPABASE_TABLE).select('id').limit(1).execute()
-        if response.data:
-            st.info("Supabaseに既にデータが存在するため、移行をスキップします。")
-            return
-        sqlite_records = load_records_sqlite()
-        if not sqlite_records:
-            st.info("SQLiteにデータがないため、移行をスキップします。")
-            return
-
-        # 少量ずつ移行してエラーを防ぐ
-        batch_size = 10
-        for i in range(0, len(sqlite_records), batch_size):
-            batch = sqlite_records[i:i + batch_size]
-            payload = []
-            for record in batch:
-                payload.append({
-                    'practice_date': record['練習日'].isoformat(),
-                    'opponent_name': record['対戦相手'],
-                    'result': record['結果'],
-                    'concentration': record['集中度'],
-                    'meal': record['食事'],
-                    'opponent_style': record['相手のスタイル'],
-                    'opponent_build': record['相手の体格'],
-                    'previous_day': record['前日の過ごし方'],
-                    'memo': record['メモ'],
-                    'fatigue': record['当日の疲労度'],
-                    'opponent_weight': record['相手の体重'],
-                    'own_weight': record['自分の体重']
-                })
-            try:
-                supabase_client.table(SUPABASE_TABLE).insert(payload).execute()
-            except Exception as batch_error:
-                st.warning(f"バッチ {i//batch_size + 1} の移行中にエラーが発生しました: {batch_error}")
-                continue
-
-        st.success(f'SQLiteの記録 {len(sqlite_records)} 件をSupabaseに移行しました。')
-    except Exception as e:
-        st.warning(f"Supabase移行中にエラーが発生しました: {e}")
-        st.info("Supabaseの設定を確認してください。テーブル 'records' が存在するか、APIキーが正しいか確認してください。")
 
 
 # 初期化
