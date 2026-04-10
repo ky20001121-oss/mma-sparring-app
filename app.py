@@ -13,6 +13,7 @@ st.set_page_config(page_title="格闘技スパーリング記録アプリ", layo
 st.title("格闘技スパーリング記録アプリ")
 
 SUPABASE_TABLE = "records"
+SUPABASE_TECH_TABLE = "tech_notes"
 
 
 def create_supabase_client():
@@ -72,12 +73,70 @@ def init_db():
     if 'own_weight' not in columns:
         conn.execute('ALTER TABLE records ADD COLUMN own_weight TEXT')
     
+    # 技術練習テーブル作成
+    conn.execute('''CREATE TABLE IF NOT EXISTS tech_notes (
+        id INTEGER PRIMARY KEY,
+        practice_date TEXT,
+        tech_name TEXT,
+        pre_goal TEXT,
+        post_reflection TEXT,
+        next_improvement TEXT
+    )''')
+    
     conn.commit()
     conn.close()
 
 
-# SQLite からデータ読み込み
-def load_records_sqlite(opponent_filter=None, start_date=None, end_date=None):
+# SQLite から技術練習データ読み込み
+def load_tech_notes_sqlite():
+    conn = sqlite3.connect('mma_records.db')
+    cursor = conn.execute('SELECT * FROM tech_notes ORDER BY practice_date')
+    rows = cursor.fetchall()
+    notes = []
+    for row in rows:
+        note = {
+            "id": row[0],
+            "練習日": date.fromisoformat(row[1]),
+            "技術名": row[2],
+            "練習前の目的": row[3],
+            "練習後の成果": row[4],
+            "次の改善点": row[5]
+        }
+        notes.append(note)
+    conn.close()
+    return notes
+
+
+# Supabase から技術練習データ読み込み
+def load_tech_notes_supabase():
+    if not supabase_client:
+        return []
+    try:
+        response = supabase_client.table(SUPABASE_TECH_TABLE).select('*').order('practice_date').execute()
+        notes = []
+        for row in response.data:
+            note = {
+                "id": row.get('id'),
+                "練習日": date.fromisoformat(row.get('practice_date')) if row.get('practice_date') else date.today(),
+                "技術名": row.get('tech_name', ''),
+                "練習前の目的": row.get('pre_goal', ''),
+                "練習後の成果": row.get('post_reflection', ''),
+                "次の改善点": row.get('next_improvement', '')
+            }
+            notes.append(note)
+        return notes
+    except Exception as e:
+        raise RuntimeError(f"Supabase技術練習読み込みエラー: {e}")
+
+
+# 技術練習データ読み込み
+def load_tech_notes():
+    if supabase_client:
+        try:
+            return load_tech_notes_supabase()
+        except Exception as e:
+            st.warning(f"Supabase技術練習読み込みエラーのためSQLiteを使用します: {e}")
+    return load_tech_notes_sqlite()
     conn = sqlite3.connect('mma_records.db')
     query = 'SELECT * FROM records WHERE 1=1'
     params = []
@@ -160,8 +219,41 @@ def load_records(opponent_filter=None, start_date=None, end_date=None):
     return load_records_sqlite(opponent_filter, start_date, end_date)
 
 
-# Supabase にデータを保存
-def insert_record_supabase(record):
+# Supabase に技術練習データを保存
+def insert_tech_note_supabase(note):
+    try:
+        response = supabase_client.table(SUPABASE_TECH_TABLE).insert(note).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase技術練習保存エラー: {e}")
+
+
+# SQLite に技術練習データを保存
+def insert_tech_note_sqlite(note):
+    conn = sqlite3.connect('mma_records.db')
+    conn.execute(
+        'INSERT INTO tech_notes (practice_date, tech_name, pre_goal, post_reflection, next_improvement) VALUES (?, ?, ?, ?, ?)',
+        (
+            note['practice_date'],
+            note['tech_name'],
+            note['pre_goal'],
+            note['post_reflection'],
+            note['next_improvement']
+        )
+    )
+    conn.commit()
+    conn.close()
+
+
+# 技術練習データ保存
+def save_tech_note(note):
+    if supabase_client:
+        try:
+            insert_tech_note_supabase(note)
+            return
+        except Exception as e:
+            st.warning(f"Supabase技術練習保存エラーのためSQLiteに保存します: {e}")
+    insert_tech_note_sqlite(note)
     try:
         response = supabase_client.table(SUPABASE_TABLE).insert(record).execute()
         return response
@@ -204,8 +296,41 @@ def save_record(record):
     insert_record_sqlite(record)
 
 
-# Supabase で更新
-def update_record_supabase(record_id, record):
+# Supabase で技術練習データを更新
+def update_tech_note_supabase(note_id, note):
+    try:
+        response = supabase_client.table(SUPABASE_TECH_TABLE).update(note).eq('id', note_id).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase技術練習更新エラー: {e}")
+
+
+# SQLite で技術練習データを更新
+def update_tech_note_sqlite(note_id, note):
+    conn = sqlite3.connect('mma_records.db')
+    conn.execute(
+        '''UPDATE tech_notes SET practice_date = ?, tech_name = ?, pre_goal = ?, post_reflection = ?, next_improvement = ? WHERE id = ?''',
+        (
+            note['practice_date'],
+            note['tech_name'],
+            note['pre_goal'],
+            note['post_reflection'],
+            note['next_improvement'],
+            note_id
+        )
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_tech_note(note_id, note):
+    if supabase_client:
+        try:
+            update_tech_note_supabase(note_id, note)
+            return
+        except Exception as e:
+            st.warning(f"Supabase技術練習更新エラーのためSQLiteを更新します: {e}")
+    update_tech_note_sqlite(note_id, note)
     try:
         response = supabase_client.table(SUPABASE_TABLE).update(record).eq('id', record_id).execute()
         return response
@@ -248,8 +373,31 @@ def update_record(record_id, record):
     update_record_sqlite(record_id, record)
 
 
-# Supabase で削除
-def delete_record_supabase(record_id):
+# Supabase で技術練習データを削除
+def delete_tech_note_supabase(note_id):
+    try:
+        response = supabase_client.table(SUPABASE_TECH_TABLE).delete().eq('id', note_id).execute()
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Supabase技術練習削除エラー: {e}")
+
+
+# SQLite で技術練習データを削除
+def delete_tech_note_sqlite(note_id):
+    conn = sqlite3.connect('mma_records.db')
+    conn.execute('DELETE FROM tech_notes WHERE id = ?', (note_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_tech_note(note_id):
+    if supabase_client:
+        try:
+            delete_tech_note_supabase(note_id)
+            return
+        except Exception as e:
+            st.warning(f"Supabase技術練習削除エラーのためSQLiteを削除します: {e}")
+    delete_tech_note_sqlite(note_id)
     try:
         response = supabase_client.table(SUPABASE_TABLE).delete().eq('id', record_id).execute()
         return response
@@ -334,7 +482,7 @@ if 'page' not in st.session_state:
 
 # サイドバーメニュー
 st.sidebar.markdown("### 🥊 ナビゲーション")
-menu_items = ["📝 記録する", "📋 記録一覧", "📊 グラフ"]
+menu_items = ["📝 記録する", "📋 記録一覧", "📊 グラフ", "🛠️ 技術練習"]
 for item in menu_items:
     button_text = f"▶ {item}" if st.session_state['page'] == item else item
     if st.sidebar.button(button_text, key=item, use_container_width=True):
@@ -626,5 +774,92 @@ elif page == "📋 記録一覧":
             st.write("パターンを特定できませんでした。")
     else:
         st.write("成功した試合がありません。")
+
+elif page == "🛠️ 技術練習":
+    st.markdown("<h1 style='text-align: center; color: #FF6B35; font-weight: bold;'>🛠️ 技術練習記録 🛠️</h1>", unsafe_allow_html=True)
+    
+    # 入力フォーム
+    with st.container(border=True):
+        st.markdown("### 📝 新しい技術練習を記録")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**📅 練習日**")
+            tech_date = st.date_input("", value=date.today(), label_visibility="collapsed", key="tech_date")
+        with col2:
+            st.markdown("**🛠️ 練習内容（技術名）**")
+            tech_name = st.text_input("", placeholder="例: ジャブの連打", label_visibility="collapsed", key="tech_name")
+        
+        st.markdown("**🎯 練習前の目的（この練習で何を得るか）**")
+        pre_goal = st.text_area("", placeholder="例: ジャブの精度を上げる", label_visibility="collapsed", key="pre_goal")
+        
+        st.markdown("**📈 練習後の振り返り（この練習で何を得たか）**")
+        post_reflection = st.text_area("", placeholder="例: 精度が向上した", label_visibility="collapsed", key="post_reflection")
+        
+        st.markdown("**🔧 次回の改善策（どうやれば改善できるか）**")
+        next_improvement = st.text_area("", placeholder="例: スピードを上げる練習を追加", label_visibility="collapsed", key="next_improvement")
+        
+        tech_submitted = st.button("💾 保存", use_container_width=True, type="primary", key="tech_save")
+        
+        if tech_submitted:
+            if tech_name:
+                tech_note = {
+                    'practice_date': tech_date.isoformat(),
+                    'tech_name': tech_name,
+                    'pre_goal': pre_goal,
+                    'post_reflection': post_reflection,
+                    'next_improvement': next_improvement
+                }
+                save_tech_note(tech_note)
+                st.success("技術練習記録が保存されました！")
+            else:
+                st.error("練習内容（技術名）を入力してください")
+    
+    # 記録一覧
+    st.header("これまでの技術練習記録")
+    
+    tech_notes = load_tech_notes()
+    
+    if tech_notes:
+        for note in tech_notes:
+            with st.container(border=True):
+                st.write(f"**練習日**: {note['練習日']}")
+                st.write(f"**技術名**: {note['技術名']}")
+                st.write(f"**練習前の目的**: {note['練習前の目的']}")
+                st.write(f"**練習後の成果**: {note['練習後の成果']}")
+                st.write(f"**次の改善点**: {note['次の改善点']}")
+                
+                edit_expander = st.expander("編集する")
+                with edit_expander:
+                    with st.form(f"edit_tech_form_{note['id']}"):
+                        edit_tech_date = st.date_input("練習日", value=note['練習日'], key=f"edit_tech_date_{note['id']}")
+                        edit_tech_name = st.text_input("練習内容（技術名）", value=note['技術名'], key=f"edit_tech_name_{note['id']}")
+                        edit_pre_goal = st.text_area("練習前の目的", value=note['練習前の目的'], key=f"edit_pre_goal_{note['id']}")
+                        edit_post_reflection = st.text_area("練習後の振り返り", value=note['練習後の成果'], key=f"edit_post_reflection_{note['id']}")
+                        edit_next_improvement = st.text_area("次回の改善策", value=note['次の改善点'], key=f"edit_next_improvement_{note['id']}")
+                        tech_updated = st.form_submit_button("更新", use_container_width=True, key=f"update_tech_{note['id']}")
+                        if tech_updated:
+                            if edit_tech_name:
+                                updated_note = {
+                                    'practice_date': edit_tech_date.isoformat(),
+                                    'tech_name': edit_tech_name,
+                                    'pre_goal': edit_pre_goal,
+                                    'post_reflection': edit_post_reflection,
+                                    'next_improvement': edit_next_improvement
+                                }
+                                update_tech_note(note['id'], updated_note)
+                                st.success("技術練習記録が更新されました！")
+                                st.experimental_rerun()
+                            else:
+                                st.error("練習内容（技術名）を入力してください")
+                
+                delete_col, _ = st.columns([1, 4])
+                with delete_col:
+                    if st.button("削除", key=f"delete_tech_{note['id']}"):
+                        delete_tech_note(note['id'])
+                        st.success("技術練習記録を削除しました。")
+                        st.experimental_rerun()
+    else:
+        st.write("まだ技術練習記録がありません。")
+
 else:
     st.write("データがありません。")
