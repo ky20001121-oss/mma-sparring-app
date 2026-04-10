@@ -77,9 +77,20 @@ def init_db():
 
 
 # SQLite からデータ読み込み
-def load_records_sqlite():
+def load_records_sqlite(opponent_filter=None, start_date=None, end_date=None):
     conn = sqlite3.connect('mma_records.db')
-    cursor = conn.execute('SELECT * FROM records')
+    query = 'SELECT * FROM records WHERE 1=1'
+    params = []
+    if opponent_filter:
+        query += ' AND opponent_name LIKE ?'
+        params.append(f'%{opponent_filter}%')
+    if start_date:
+        query += ' AND practice_date >= ?'
+        params.append(start_date.isoformat())
+    if end_date:
+        query += ' AND practice_date <= ?'
+        params.append(end_date.isoformat())
+    cursor = conn.execute(query, params)
     rows = cursor.fetchall()
     records = []
     for row in rows:
@@ -104,11 +115,18 @@ def load_records_sqlite():
 
 
 # Supabase からデータ読み込み
-def load_records_supabase():
+def load_records_supabase(opponent_filter=None, start_date=None, end_date=None):
     if not supabase_client:
         return []
     try:
-        response = supabase_client.table(SUPABASE_TABLE).select('*').order('practice_date').execute()
+        query = supabase_client.table(SUPABASE_TABLE).select('*')
+        if opponent_filter:
+            query = query.ilike('opponent_name', f'%{opponent_filter}%')
+        if start_date:
+            query = query.gte('practice_date', start_date.isoformat())
+        if end_date:
+            query = query.lte('practice_date', end_date.isoformat())
+        response = query.order('practice_date').execute()
         records = []
         for row in response.data:
             record = {
@@ -133,13 +151,13 @@ def load_records_supabase():
 
 
 # データベース読み込み
-def load_records():
+def load_records(opponent_filter=None, start_date=None, end_date=None):
     if supabase_client:
         try:
-            return load_records_supabase()
+            return load_records_supabase(opponent_filter, start_date, end_date)
         except Exception as e:
             st.warning(f"Supabase読み込みエラーのためSQLiteを使用します: {e}")
-    return load_records_sqlite()
+    return load_records_sqlite(opponent_filter, start_date, end_date)
 
 
 # Supabase にデータを保存
@@ -314,23 +332,61 @@ if supabase_client:
 page = st.sidebar.radio("ナビゲーション", ["📝 記録する", "📋 記録一覧", "📊 グラフ"])
 
 if page == "📝 記録する":
-    st.header("新しい記録を入力")
+    st.markdown("<h1 style='text-align: center; color: #FF6B35; font-weight: bold;'>⚡ 新しい記録を入力 ⚡</h1>", unsafe_allow_html=True)
     
-    with st.form("record_form"):
-        practice_date = st.date_input("練習日", value=date.today())
-        opponent_name = st.text_input("対戦相手の名前")
-        result = st.text_input("スパーリングの結果")
-        concentration = st.slider("集中度", min_value=1, max_value=5, value=3)
-        meal = st.text_input("直前の食事")
-        opponent_style = st.text_input("相手のスタイル")
-        opponent_build = st.text_input("相手の体格")
-        opponent_weight = st.text_input("相手の体重")
-        own_weight = st.text_input("当日の自分の体重")
-        previous_day = st.text_input("前日の過ごし方")
-        fatigue = st.text_input("当日の疲労度")
-        memo = st.text_area("メモ")
+    with st.container(border=True):
+        st.markdown("### 📅 基本情報")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**📅 練習日**")
+            practice_date = st.date_input("", value=date.today(), label_visibility="collapsed")
+        with col2:
+            st.markdown("**👤 対戦相手の名前**")
+            opponent_name = st.text_input("", placeholder="例: 山田太郎", label_visibility="collapsed")
         
-        submitted = st.form_submit_button("保存")
+        st.markdown("### 🥊 試合詳細")
+        col3, col4 = st.columns(2)
+        with col3:
+            st.markdown("**🏆 スパーリングの結果**")
+            result = st.text_input("", placeholder="例: 勝ち", label_visibility="collapsed")
+        with col4:
+            st.markdown("**🎯 集中度**")
+            concentration = st.slider("", min_value=1, max_value=5, value=3, label_visibility="collapsed")
+        
+        st.markdown("### 🍽️ コンディション")
+        col5, col6 = st.columns(2)
+        with col5:
+            st.markdown("**🍽️ 直前の食事**")
+            meal = st.text_input("", placeholder="例: プロテイン", label_visibility="collapsed")
+        with col6:
+            st.markdown("**💪 当日の疲労度**")
+            fatigue = st.text_input("", placeholder="例: 軽い", label_visibility="collapsed")
+        
+        st.markdown("### 🏋️ 相手情報")
+        col7, col8, col9 = st.columns(3)
+        with col7:
+            st.markdown("**🥊 相手のスタイル**")
+            opponent_style = st.text_input("", placeholder="例: ストライカー", label_visibility="collapsed")
+        with col8:
+            st.markdown("**🏗️ 相手の体格**")
+            opponent_build = st.text_input("", placeholder="例: 筋肉質", label_visibility="collapsed")
+        with col9:
+            st.markdown("**⚖️ 相手の体重**")
+            opponent_weight = st.text_input("", placeholder="例: 70kg", label_visibility="collapsed")
+        
+        st.markdown("### 📝 その他")
+        col10, col11 = st.columns(2)
+        with col10:
+            st.markdown("**🏠 前日の過ごし方**")
+            previous_day = st.text_input("", placeholder="例: 早寝早起き", label_visibility="collapsed")
+        with col11:
+            st.markdown("**⚖️ 当日の自分の体重**")
+            own_weight = st.text_input("", placeholder="例: 68kg", label_visibility="collapsed")
+        
+        st.markdown("**📝 メモ**")
+        memo = st.text_area("", placeholder="試合の感想や気づきを記入", label_visibility="collapsed")
+        
+        submitted = st.button("💾 保存", use_container_width=True, type="primary")
         
         if submitted:
             if opponent_name:
@@ -356,7 +412,25 @@ if page == "📝 記録する":
 elif page == "📋 記録一覧":
     st.header("これまでの記録")
     
-    records = load_records()
+    # 検索・フィルタリング
+    with st.container(border=True):
+        st.subheader("🔍 検索・フィルタリング")
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        with col1:
+            opponent_filter = st.text_input("対戦相手の名前（部分一致）", placeholder="例: 山田")
+        with col2:
+            start_date = st.date_input("開始日", value=None, key="start_date")
+        with col3:
+            end_date = st.date_input("終了日", value=None, key="end_date")
+        with col4:
+            search_button = st.button("検索", use_container_width=True)
+    
+    # 検索実行
+    if search_button or st.session_state.get('search_triggered', False):
+        st.session_state['search_triggered'] = True
+        records = load_records(opponent_filter, start_date, end_date)
+    else:
+        records = load_records()
     
     if records:
         for record in records:
@@ -372,7 +446,7 @@ elif page == "📋 記録一覧":
                     st.write(f"**集中度**: {record['集中度']}")
                     st.write(f"**食事**: {record['食事']}")
                     st.write(f"**相手のスタイル**: {record['相手のスタイル']}")
-                    st.write(f"**相手の体格**: {record['相手の体格']}")
+                    st.write(f"**相手の体格**: {record['相手の体格']}")  
                     st.write(f"**前日の過ごし方**: {record['前日の過ごし方']}")
                     st.write(f"**当日の疲労度**: {record['当日の疲労度']}")
                 st.write(f"**メモ**: {record['メモ']}")
@@ -422,10 +496,7 @@ elif page == "📋 記録一覧":
                         st.success("記録を削除しました。")
                         st.experimental_rerun()
     else:
-        st.write("まだ記録がありません.")
-
-elif page == "📊 グラフ":
-    st.header("データ分析")
+        st.write("検索結果がありません。条件を変更して再度検索してください。")
     
     records = load_records()
     
