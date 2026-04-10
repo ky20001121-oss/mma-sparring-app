@@ -359,7 +359,7 @@ if page == "📝 記録する":
         col3, col4 = st.columns(2)
         with col3:
             st.markdown("**🏆 スパーリングの結果**")
-            result = st.text_input("", placeholder="例: 勝ち", label_visibility="collapsed")
+            result = st.selectbox("", options=["勝ち", "負け", "引き分け"], index=None, placeholder="結果を選択", label_visibility="collapsed")
         with col4:
             st.markdown("**🎯 集中度**")
             concentration = st.slider("", min_value=1, max_value=5, value=3, label_visibility="collapsed")
@@ -467,7 +467,7 @@ elif page == "📋 記録一覧":
                     with st.form(f"edit_form_{record['id']}"):
                         edit_date = st.date_input("練習日", value=record['練習日'], key=f"edit_date_{record['id']}")
                         edit_opponent_name = st.text_input("対戦相手の名前", value=record['対戦相手'], key=f"edit_opponent_name_{record['id']}")
-                        edit_result = st.text_input("スパーリングの結果", value=record['結果'], key=f"edit_result_{record['id']}")
+                        edit_result = st.selectbox("スパーリングの結果", options=["勝ち", "負け", "引き分け"], index=["勝ち", "負け", "引き分け"].index(record['結果']) if record['結果'] in ["勝ち", "負け", "引き分け"] else None, key=f"edit_result_{record['id']}")
                         edit_concentration = st.slider("集中度", min_value=1, max_value=5, value=record['集中度'], key=f"edit_concentration_{record['id']}")
                         edit_meal = st.text_input("直前の食事", value=record['食事'], key=f"edit_meal_{record['id']}")
                         edit_opponent_style = st.text_input("相手のスタイル", value=record['相手のスタイル'], key=f"edit_opponent_style_{record['id']}")
